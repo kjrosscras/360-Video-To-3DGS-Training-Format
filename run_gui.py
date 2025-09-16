@@ -204,120 +204,114 @@ def extract_frames_with_progress(video_dir: Path, interval_seconds: float) -> in
 
 def run_yolo_masking(frames_root: Path) -> int:
     """
-    EXACT YOLO settings as mask_yolo.py, but overwrites the original JPGs in frames/:
-      - model: yolov8x-seg.pt
-      - conf: 0.35, iou: 0.45, imgsz: 1024
-      - classes: [0] (person)
-      - remove_person=True, grow_person_px=30
-    Output: in-place .jpg overwrite in frames/
+    Create RGBA PNGs in-place for PostShot training:
+      - RGB stays the same
+      - Alpha = 0 where person is present, 255 elsewhere
+    Overwrites JPGs by writing <stem>.png and deleting the .jpg.
+
+    Returns: number of frames converted.
     """
     try:
         from ultralytics import YOLO
         import numpy as np
         import cv2
-        import torch
-        import time
+        from PIL import Image
+        import torch, time, os
     except Exception as e:
-        ui_log("[ERROR] YOLO/torch/OpenCV not available.")
-        ui_log("       pip install ultralytics opencv-python torch torchvision torchaudio")
+        ui_log("[ERROR] YOLO/torch/OpenCV/Pillow not available.")
+        ui_log("       pip install ultralytics opencv-python pillow torch torchvision torchaudio")
         return 0
 
-    # --- Fixed parameters (mirroring mask_yolo.py) ---
-    model_name = "yolov8x-seg.pt"
-    conf = 0.35
-    iou = 0.45
-    imgsz = 1024
-    classes = [0]           # person
-    remove_person = True
-    grow_person_px = 30     # expand the person region before removal
+    # Fixed parameters (your working script)
+    model_name  = "yolov8x-seg.pt"
+    conf        = 0.35
+    iou         = 0.45
+    imgsz       = 1024
+    classes     = [0]     # person
+    grow_px     = 30      # expand person mask before cutting alpha
 
-    def load_bgr(path: Path) -> np.ndarray:
-        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
-        if img is None:
-            raise RuntimeError(f"Failed to read image: {path}")
-        return img
-
-    def morph_expand(mask_bool: np.ndarray, grow_px: int) -> np.ndarray:
-        """Grow (dilate) or shrink (erode) a boolean mask in pixel units."""
-        if grow_px == 0:
+    def morph_expand(mask_bool: np.ndarray, grow: int) -> np.ndarray:
+        if grow == 0:
             return mask_bool
         mask = (mask_bool.astype(np.uint8) * 255)
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        # ~3px per iteration; mirror your script’s iterative growth behavior
         step = 3
-        iters = max(1, int(abs(grow_px) / step))
-        out = cv2.dilate(mask, k, iterations=iters) if grow_px > 0 else cv2.erode(mask, k, iterations=iters)
+        iters = max(1, int(abs(grow) / step))
+        out = cv2.dilate(mask, k, iterations=iters) if grow > 0 else cv2.erode(mask, k, iterations=iters)
         return (out > 0)
 
-    img_paths = sorted(frames_root.glob("*.jpg"))
+    # Accept both .jpg and .png in case user re-runs; prioritize jpg first
+    jpgs = sorted(frames_root.glob("*.jpg"))
+    pngs = sorted(frames_root.glob("*.png"))
+    img_paths = jpgs + [p for p in pngs if (frames_root / (p.stem + ".jpg")).exists() is False]
     if not img_paths:
-        ui_log(f"[WARN] No .jpg frames found in {frames_root}")
+        ui_log(f"[WARN] No frames found in {frames_root} (.jpg or .png)")
         return 0
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ui_log(f"[YOLO] Loading {model_name} on {device} …")
-    model = YOLO(model_name)  # auto-download if missing
+    model = YOLO(model_name)
 
     total = len(img_paths)
     processed = 0
-    ui_status("Masking User")
+    ui_status("Generating RGBA PNGs (alpha=0 on person)…")
     ui_sub_progress(0, indeterminate=False)
-
     last_update = time.time()
 
     for i, img_path in enumerate(img_paths, 1):
         try:
-            bgr = load_bgr(img_path)
+            # Load as RGB for YOLO, keep original colors
+            bgr = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
+            if bgr is None:
+                raise RuntimeError(f"Failed to read image: {img_path}")
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             h, w = rgb.shape[:2]
 
-            # Predict with fixed settings (avoids imgsz=None error)
             results = model.predict(
-                source=rgb,       # ndarray -> avoids loader path handling
+                source=rgb,       # ndarray input
                 conf=conf,
                 iou=iou,
                 imgsz=imgsz,
-                verbose=False,
                 classes=classes,
-                device=None       # let ultralytics choose (cuda if available)
+                verbose=False,
+                device=None
             )
 
-            # Default: if no person found, keep image as-is
-            keep_mask = np.ones((h, w), dtype=bool)
+            # Default alpha fully opaque
+            alpha = np.full((h, w), 255, dtype=np.uint8)
 
             if results and results[0].masks is not None and len(results[0].masks) > 0:
-                masks_tensor = results[0].masks.data.cpu().numpy()   # (N, Hm, Wm) float [0,1]
+                masks_tensor = results[0].masks.data.cpu().numpy()  # (N, Hm, Wm) in [0,1]
                 person_small = (masks_tensor.max(axis=0) > 0.5).astype(np.uint8)
                 person = cv2.resize(person_small, (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+                person = morph_expand(person, grow_px)
+                alpha[person] = 0  # person region becomes transparent
 
-                # Grow person region to be safe
-                person = morph_expand(person, grow_person_px)
+            # Compose RGBA and write PNG next to original
+            rgba = np.dstack([rgb, alpha])
+            out_png = frames_root / f"{img_path.stem}.png"
+            Image.fromarray(rgba, mode="RGBA").save(out_png)
 
-                # We remove the person → keep everything else
-                if remove_person:
-                    keep_mask = ~person
-                else:
-                    keep_mask = person
-
-            # Apply in-place: black-out pixels where keep_mask is False
-            # (JPEG can’t store alpha; this mimics transparency by zeroing)
-            out_rgb = rgb.copy()
-            out_rgb[~keep_mask] = 0  # black-out removed area
-            out_bgr = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(str(img_path), out_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            # If the source was JPG, remove it after successful PNG write
+            if img_path.suffix.lower() == ".jpg" and out_png.exists():
+                try:
+                    os.remove(str(img_path))
+                except Exception as _:
+                    pass
 
             processed += 1
 
         except Exception as e:
-            ui_log(f"[ERROR] {img_path.name}: {e}")
+            ui_log(f"[ERROR] RGBA write {img_path.name}: {e}")
 
         if (time.time() - last_update) > 0.05:
             ui_sub_progress(min(100.0, 100.0 * i / total), indeterminate=False)
             last_update = time.time()
 
     ui_sub_progress(100.0, indeterminate=False)
-    ui_log(f"[OK] In-place masking complete: {processed}/{total} (overwrote JPGs in {frames_root})")
+    ui_log(f"[OK] RGBA conversion complete: {processed}/{total} → PNG with alpha in {frames_root}")
     return processed
+
 
 
 # =========================
@@ -561,7 +555,7 @@ def main():
 
     Label(ctrl, text="seconds", bg="black", fg="white").pack(side="left", padx=(0, 16))
 
-    use_masking = BooleanVar(value=False)
+    use_masking = BooleanVar(value=True)
     mcb = Checkbutton(
         ctrl,
         text="Enable Masking (removes user from frames)",
