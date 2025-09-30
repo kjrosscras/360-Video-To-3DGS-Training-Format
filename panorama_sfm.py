@@ -89,13 +89,13 @@ def get_virtual_rotations() -> Sequence[np.ndarray]:
     """Custom virtual camera rotations defined by exact pitch/yaw angles."""
     pitch_yaw_pairs = [
         (0, 90), #Reference Pose
-        (42, 0),
+        (33, 0),
         (-42, 0),
         (0, 42),
-        (0, -42),
+        (0, -27),
         (42, 180),
-        (-42, 180),
-        (0, 222),
+        (-33, 180),
+        (0, 207),
         (0, 138),
         
     ]
