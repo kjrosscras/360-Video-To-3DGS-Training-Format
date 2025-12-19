@@ -301,17 +301,17 @@ def run(args):
     matching_options.use_gpu = True
     matching_options.gpu_index = "0"
 
-    if args.matcher == "sequential":
-        seq_opts = pycolmap.SequentialMatchingOptions(loop_detection=True)
-        pycolmap.match_sequential(database_path, matching_options=seq_opts, sift_options=matching_options)
-    elif args.matcher == "exhaustive":
-        pycolmap.match_exhaustive(database_path, sift_options=matching_options)
-    elif args.matcher == "vocabtree":
-        pycolmap.match_vocabtree(database_path, sift_options=matching_options)
-    elif args.matcher == "spatial":
-        pycolmap.match_spatial(database_path, sift_options=matching_options)
-    else:
-        logging.fatal(f"Unknown matcher: {args.matcher}")
+    # Sequential matching options (good for ordered video frames / panoramas)
+    seq_opts = pycolmap.SequentialMatchingOptions(
+        loop_detection=True  # keeps the ability to close loops (e.g., full 360 walk)
+)
+
+    pycolmap.match_sequential(
+        database_path,
+        sift_options=matching_options,
+        matching_options=seq_opts,
+)
+
 
     opts = pycolmap.IncrementalPipelineOptions(
         ba_refine_sensor_from_rig=False,
@@ -322,6 +322,16 @@ def run(args):
     recs = pycolmap.incremental_mapping(database_path, image_dir, rec_path, opts)
     for idx, rec in recs.items():
         logging.info(f"#{idx} {rec.summary()}")
+
+        out_dir = rec_path / str(idx)
+        out_dir.mkdir(exist_ok=True, parents=True)
+
+        logging.info(f"Writing text COLMAP model to {out_dir}")
+        # This writes cameras.txt / images.txt / points3D.txt
+        rec.write_text(str(out_dir))
+        # If for some reason rec.write_text doesn't exist in your pycolmap version,
+        # you can use this instead:
+        # pycolmap.write_model(rec, out_dir, ext=".txt")        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

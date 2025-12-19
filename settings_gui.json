@@ -3,8 +3,8 @@
   "ffmpeg_path": "C:/Program Files/Topaz Labs LLC/Topaz Video/ffmpeg.exe",
   "model_dir": "C:/ProgramData/Topaz Labs LLC/Topaz Video/models",
   "use_masking": true,
-  "seconds_per_frame": 1,
-  "use_topaz_cli": true,
+  "seconds_per_frame": 1.0,
+  "use_topaz_cli": false,
   "topaz_cli_cmd": "ffmpeg \"-hide_banner\" \"-i\" \"E:/Test/Test/VID_20250924_125035_00_001.mp4\" \"-sws_flags\" \"spline+accurate_rnd+full_chroma_int\" \"-filter_complex\" \"tvai_up=model=thm-2:scale=1:device=0:vram=1:instances=0,tvai_up=model=amq-13:scale=0:w=8192:h=4096:device=0:vram=1:instances=1,scale=w=8192:h=4096:flags=lanczos:threads=0\" \"-c:v\" \"tiff\" \"-pix_fmt\" \"rgb24\" \"-compression_algo\" \"deflate\" \"-start_number\" \"0\" \"-movflags\" \"frag_keyframe+empty_moov+delay_moov+use_metadata_tags+write_colr\" \"-bf\" \"0\" \"-metadata\" \"videoai=Motion blur removed using thm-2. Enhanced using amq-13. Changed resolution to 8192x4096\" \"E:/Test/Test/VID_20250924_125035_00_001_thm2_amq13/%06d.tiff\"",
   "model_data_dir": "C:\\ProgramData\\Topaz Labs LLC\\Topaz Video\\models"
 }

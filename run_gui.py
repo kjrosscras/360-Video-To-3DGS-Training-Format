@@ -17,6 +17,18 @@ from tkinter import ttk
 import numpy as np
 import shutil
 
+# LichtFeld Studio CLI configuration
+# EDIT this path to wherever your LichtFeldStudio.exe lives
+LICHTFELD_EXE = r"C:\Users\kjros\repos\LichtFeld-Studio\build\LichtFeld-Studio.exe"
+
+# Training parameters (you can tweak these if you want)
+LICHTFELD_ITER          = 30000     # -i, --iter   (default: 30000)
+LICHTFELD_RESIZE_FACTOR = 1         # -r, --resize-factor
+LICHTFELD_MAX_CAP       = 1_000_000 # --max-cap    (MCMC max Gaussians, default: 1e6)
+LICHTFELD_STRATEGY      = "mcmc"    # --strategy   (default is mcmc)
+LICHTFELD_HEADLESS      = True      # --headless   (terminal-only mode)
+
+
 # =========================
 # Seam + Topaz config
 # =========================
@@ -498,6 +510,90 @@ def run_segment_images(project_root: Path) -> bool:
         ui_log(f"[WARN] segment_images.py reported an error: {e}")
         return False
 
+def clean_images_txt_after_pano_deletion(project_root: Path) -> bool:
+    """
+    Call remove_pano_camera0_from_images_txt.py on:
+        project_root / output / sparse / 0 / images.txt
+
+    This removes all entries for pano_camera0 so LichtFeld (or any
+    other trainer) won't look for images we've deleted.
+    """
+    fixer = Path(__file__).parent / "remove_pano_camera0_from_images_txt.py"
+    if not fixer.exists():
+        ui_log(f"[WARN] Missing remove_pano_camera0_from_images_txt.py (skipping): {fixer}")
+        return False
+
+    images_txt = project_root / "output" / "sparse" / "0" / "images.txt"
+    if not images_txt.exists():
+        ui_log(f"[WARN] images.txt not found, skipping pano_camera0 cleanup: {images_txt}")
+        return False
+
+    cmd = [sys.executable, str(fixer), "--images_txt", str(images_txt)]
+    ui_log(f"[RUN] {' '.join(cmd)}")
+    ui_status("Cleaning pano_camera0 entries from images.txt…")
+    ui_sub_progress(indeterminate=True)
+    try:
+        subprocess.run(cmd, check=True)
+        ui_sub_progress(100, indeterminate=False)
+        ui_log("[OK] Removed pano_camera0 entries from images.txt.")
+        return True
+    except subprocess.CalledProcessError as e:
+        ui_sub_progress(0, indeterminate=False)
+        ui_log(f"[WARN] remove_pano_camera0_from_images_txt.py reported an error: {e}")
+        return False
+
+def run_lichtfeld_training(colmap_root: Path, images_dir: Path) -> bool:
+    """
+    Run LichtFeld Studio training via its CLI.
+
+    - colmap_root: folder that contains 'sparse/0' and images (our 'output' dir)
+    - images_dir:  the image directory we used for COLMAP (frames or frames_final)
+    """
+    dataset_dir = colmap_root  # e.g. E:\Project\output
+    sparse_dir  = dataset_dir / "sparse" / "0"
+
+    ui_log("[LICHTFELD] Dataset ready for LichtFeld CLI:")
+    ui_log(f"            Data path: {dataset_dir}")
+    ui_log(f"            Images:    {images_dir}")
+    ui_log(f"            Sparse:    {sparse_dir}")
+
+    exe_path = Path(LICHTFELD_EXE)
+    if not exe_path.exists():
+        ui_log(f"[WARN] LichtFeld executable not found at: {exe_path}")
+        return False
+
+    # Put training results inside output/ so our cleanup preserves them
+    out_dir = dataset_dir.parent / "lichtfeld_output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        str(exe_path),
+        "-d", str(dataset_dir),              # --data-path PATH
+        "-o", str(out_dir),                  # --output-path PATH
+        "-i", str(LICHTFELD_ITER),           # --iter NUM
+        "-r", str(LICHTFELD_RESIZE_FACTOR),  # --resize-factor NUM
+        "--strategy", LICHTFELD_STRATEGY,    # --strategy mcmc
+        "--max-cap", str(LICHTFELD_MAX_CAP)  # --max-cap NUM
+    ]
+    if LICHTFELD_HEADLESS:
+        cmd.append("--headless")             # run without GUI
+
+    ui_log("[LICHTFELD] Running CLI command:")
+    ui_log("           " + " ".join(cmd))
+
+    try:
+        # This blocks until training finishes, but runs inside the pipeline thread.
+        subprocess.run(cmd, check=True)
+        ui_log("[LICHTFELD] Training finished successfully.")
+        return True
+    except subprocess.CalledProcessError as e:
+        ui_log(f"[WARN] LichtFeld CLI exited with error: {e}")
+        return False
+    except Exception as e:
+        ui_log(f"[WARN] Failed to launch LichtFeld CLI: {e}")
+        return False
+
+
 # =========================
 # Topaz headless CLI
 # =========================
@@ -661,7 +757,9 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
         ui_status("Preparing extraction…")
         video_count, fps_first = extract_frames_with_progress(project_root, seconds_per_frame)
         if not list_images(frames_root):
-            ui_log("[ERROR] No frames extracted. Aborting."); ui_status("Idle."); return
+            ui_log("[ERROR] No frames extracted. Aborting.")
+            ui_status("Idle.")
+            return
         ui_main_progress(10, indeterminate=False)
 
         # B) If Topaz enabled → seam roll → sequence → Topaz → roll back
@@ -669,7 +767,9 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
             # Seam shift
             cnt, in_width = roll_folder_lossless(frames_root, rolled_root, SEAM_YAW_DEG)
             if cnt == 0:
-                ui_log("[ERROR] Seam roll produced no images. Aborting."); ui_status("Idle."); return
+                ui_log("[ERROR] Seam roll produced no images. Aborting.")
+                ui_status("Idle.")
+                return
             # Clean early: raw frames are no longer needed once rolled frames exist
             _delete_dir_safe(frames_root, "raw extracted frames")
             ui_main_progress(15, indeterminate=False)
@@ -677,7 +777,9 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
             # Numeric sequence for Topaz
             nseq = make_numeric_sequence(rolled_root, seq_root)
             if nseq == 0:
-                ui_log("[ERROR] Failed to create numeric sequence for Topaz."); ui_status("Idle."); return
+                ui_log("[ERROR] Failed to create numeric sequence for Topaz.")
+                ui_status("Idle.")
+                return
 
             # Run Topaz
             ok = run_topaz_via_cli_command(
@@ -690,7 +792,8 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
                 fps=fps_first if fps_first > 0 else 24.0
             )
             if not ok:
-                ui_status("Idle."); return
+                ui_status("Idle.")
+                return
             # Clean: numeric sequence can go now
             _delete_dir_safe(seq_root, "Topaz numeric sequence")
             ui_main_progress(35, indeterminate=False)
@@ -698,7 +801,9 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
             # Roll back seam → frames_final
             cnt_back, _ = roll_folder_lossless(enh_root, final_frames_dir, -SEAM_YAW_DEG)
             if cnt_back == 0:
-                ui_log("[ERROR] Roll-back produced no images. Aborting."); ui_status("Idle."); return
+                ui_log("[ERROR] Roll-back produced no images. Aborting.")
+                ui_status("Idle.")
+                return
             # Clean: rolled and enhanced intermediates can go now
             _delete_dir_safe(rolled_root, "seam-shifted frames")
             _delete_dir_safe(enh_root, "Topaz enhanced frames")
@@ -709,8 +814,6 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
         else:
             ui_log("[TOPAZ] Skipped Topaz enhancement (checkbox off).")
             images_dir_for_next = frames_root  # use raw extracted frames directly
-            # Ensure final_frames_dir mirrors current working dir (so downstream paths stay consistent)
-            # We won't duplicate files; masking & COLMAP will read from images_dir_for_next.
 
         # C) Masking (writes PNG with alpha in-place at images_dir_for_next)
         if masking_enabled:
@@ -732,24 +835,53 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if not run_panorama_sfm(project_root, images_dir_for_next):
-         ui_status("COLMAP failed. See log."); return
+            ui_status("COLMAP failed. See log.")
+            return
 
+        ui_main_progress(80, indeterminate=False)
 
-        ui_main_progress(85, indeterminate=False)
-
-        # E) Delete pano_camera0
+        # E) Delete pano_camera0 folders
         delete_pano_camera0(project_root)
-        ui_main_progress(92, indeterminate=False)
+        ui_main_progress(82, indeterminate=False)
+
+        #    Then clean images.txt so it no longer references pano_camera0
+        clean_images_txt_after_pano_deletion(project_root)
+        ui_main_progress(85, indeterminate=False)
 
         # F) Segment images if multiple input videos
         if video_count > 1:
             ui_log(f"[INFO] Multiple videos detected ({video_count}). Running segment_images…")
             run_segment_images(project_root)
 
-        # G) Final cleanup: delete EVERYTHING except output/ and original video(s)
+        ui_main_progress(88, indeterminate=False)
+
+        # G) Clean sparse/0 BEFORE LichtFeld: keep only .txt files there
+        sparse0 = output_dir / "sparse" / "0"
+        if sparse0.exists():
+            for item in sparse0.iterdir():
+                try:
+                    if item.is_file():
+                        if item.suffix.lower() != ".txt":
+                            item.unlink()
+                    elif item.is_dir():
+                        _delete_dir_safe(item, f"sparse/0 subfolder {item.name}")
+                except Exception as e:
+                    ui_log(f"[WARN] Could not clean {item} in sparse/0: {e}")
+
+        ui_main_progress(90, indeterminate=False)
+
+        # H) Run LichtFeld training (CLI)
+        ui_status("Running LichtFeld training…")
+        ui_main_progress(None, indeterminate=True)
+        ok_lichtfeld = run_lichtfeld_training(output_dir, images_dir_for_next)
+        ui_main_progress(95 if ok_lichtfeld else 90, indeterminate=False)
+        if not ok_lichtfeld:
+            ui_log("[WARN] LichtFeld training failed or is not configured; continuing without splat output.")
+
+        # I) Final cleanup: delete EVERYTHING except output/ and original video(s)
         ui_status("Final cleanup…")
 
-        KEEP_DIRS  = {"output"}
+        KEEP_DIRS  = {"output", "lichtfeld_output"}
         KEEP_EXTS  = {ext.lower() for ext in VALID_VIDEO_EXT}
 
         for child in project_root.iterdir():
@@ -770,17 +902,24 @@ def pipeline_thread(project_root: Path, seconds_per_frame: float, masking_enable
         ui_status("All done.")
         ui_log("[DONE] Pipeline complete. Kept original video(s) and the 'output' folder.")
 
+
     finally:
         try:
-            progress_main.stop(); progress_sub.stop()
-        except Exception: pass
+            progress_main.stop()
+            progress_sub.stop()
+        except Exception:
+            pass
         ui_disable_inputs(False)
 
+
+    
 # =========================
 # GUI
 # =========================
 
 _last_folder = None
+
+
 
 def start_pipeline_with_path(folder_path: Path):
     global _last_folder
