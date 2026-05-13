@@ -34,48 +34,58 @@ Clone the repository:
 ```bash
 git clone https://github.com/YOUR_USERNAME/vrev-360-sfm-pipeline.git
 cd vrev-360-sfm-pipeline
+```
 
 Create the Conda environment:
 
+```bash
 conda env create -f environment.yml
 conda activate 360pipeline
+```
 
 Run the GUI:
 
+```bash
 python run_gui.py
-Building the Windows App
+```
+
+## Building the Windows App
 
 This project can be packaged with PyInstaller.
 
 Example:
 
+```powershell
 conda activate 360pipeline
 pyinstaller "VREV 360 Pipeline.spec"
+```
 
 The generated app folder will be created in:
 
+```text
 dist/VREV 360 Pipeline/
+```
 
-For distribution, zip the full VREV 360 Pipeline folder, not just the .exe.
+For distribution, zip the full `VREV 360 Pipeline` folder, not just the `.exe`.
 
-Topaz Video AI
+## Topaz Video AI
 
 Topaz Video AI is not included with this project.
 
 The enhancement option only works if the user has Topaz Video AI installed separately. This project is not affiliated with, endorsed by, or sponsored by Topaz Labs.
 
-License
+## License
 
 This project is licensed under the GNU Affero General Public License v3.0 or later.
 
-See the LICENSE file for the full license text.
+See the `LICENSE` file for the full license text.
 
 Prebuilt binaries may be distributed or sold as a convenience package. Users who receive a binary should also have access to the corresponding source code under the terms of the AGPL-3.0 license.
 
-Third-Party Software
+## Third-Party Software
 
-This project uses third-party open-source software. See THIRD_PARTY_NOTICES.md for a summary of major dependencies and license notes.
+This project uses third-party open-source software. See `THIRD_PARTY_NOTICES.md` for a summary of major dependencies and license notes.
 
-Disclaimer
+## Disclaimer
 
 This project is provided as-is, without warranty. Processing results may vary depending on capture quality, camera settings, lighting, hardware, and selected processing options.
