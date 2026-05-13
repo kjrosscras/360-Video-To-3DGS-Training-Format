@@ -32,8 +32,8 @@ Recommended system:
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vrev-360-sfm-pipeline.git
-cd vrev-360-sfm-pipeline
+git clone https://github.com/kjrosscras/360-Video-To-3DGS-Training-Format.git
+cd 360-Video-To-3DGS-Training-Format
 ```
 
 Create the Conda environment:
