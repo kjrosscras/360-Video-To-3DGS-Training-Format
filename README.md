@@ -40,12 +40,16 @@ Create the Conda environment:
 conda env create -f environment.yml
 conda activate 360pipeline
 
+Run the GUI:
+
+python run_gui.py
 Building the Windows App
 
 This project can be packaged with PyInstaller.
 
 Example:
 
+conda activate 360pipeline
 pyinstaller "VREV 360 Pipeline.spec"
 
 The generated app folder will be created in:
