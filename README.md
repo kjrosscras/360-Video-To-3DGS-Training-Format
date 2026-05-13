@@ -66,13 +66,11 @@ The generated app folder will be created in:
 dist/VREV 360 Pipeline/
 ```
 
-For distribution, zip the full `VREV 360 Pipeline` folder, not just the `.exe`.
-
 ## Topaz Video AI
 
 Topaz Video AI is not included with this project.
 
-The enhancement option only works if the user has Topaz Video AI installed separately. This project is not affiliated with, endorsed by, or sponsored by Topaz Labs.
+The enhancement option only works if the user has Topaz Video installed separately. This project is not affiliated with, endorsed by, or sponsored by Topaz Labs.
 
 ## License
 
