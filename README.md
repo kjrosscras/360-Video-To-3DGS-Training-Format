@@ -10,6 +10,8 @@ The app is designed to simplify a 360 video-to-COLMAP workflow by providing a GU
 - 360 panoramic video input
 - Pre-extracted frame folder support
 - Automatic frame extraction
+- Takes into account parallax between lenses for the poses
+- Consistent metric scaling
 - Optional Topaz Video AI enhancement workflow
 - Optional YOLO-based masking
 - Sequential / exhaustive matching options
