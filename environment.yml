@@ -2,118 +2,47 @@
 channels:
   - conda-forge
   - defaults
-  - https://repo.anaconda.com/pkgs/main
-  - https://repo.anaconda.com/pkgs/r
-  - https://repo.anaconda.com/pkgs/msys2
+
+# CPU-only environment for the VREV 360 Pipeline.
+#
+# Important:
+# - This intentionally avoids CUDA builds and CUDA runtime packages.
+# - The build selector `cpu_*` is used for COLMAP / PyCOLMAP so conda-forge
+#   does not solve to `cuda_*` builds like the previous environment did.
+# - Do not re-export this environment with full build pins after solving unless
+#   you verify no package/build contains cuda, cudart, cublas, cusolver, etc.
+
 dependencies:
-  - _openmp_mutex=4.5=2_gnu
-  - bzip2=1.0.8=h0ad9c76_8
-  - ca-certificates=2025.8.3=h4c7d964_0
-  - ceres-solver=2.2.0=gpuh2c9d208_107
-  - colmap=3.12.5=cuda_126h581ada8_0
-  - cuda-cudart=12.9.79=he0c23c2_0
-  - cuda-cudart_win-64=12.9.79=he0c23c2_0
-  - cuda-nvrtc=12.9.86=he0c23c2_0
-  - cuda-version=12.9=h4f385c5_3
-  - eigen=3.4.0=h91493d7_0
-  - flann=1.9.2=hb1d4b56_5
-  - freeglut=3.2.2=he0c23c2_3
-  - freeimage=3.18.0=h8310ca0_22
-  - gflags=2.2.2=he0c23c2_1005
-  - glew=2.1.0=h39d44d4_2
-  - glib=2.84.3=ha3795fc_1
-  - glib-tools=2.84.3=he647baa_1
-  - glog=0.7.1=h3ff59bf_0
-  - gmp=6.3.0=hfeafd45_2
-  - gst-plugins-base=1.24.11=h3fe0a9e_0
-  - gstreamer=1.24.11=h233a61a_0
-  - hdf5=1.14.6=nompi_he30205f_103
-  - icu=75.1=he0c23c2_0
-  - imath=3.1.12=hbb528cf_0
-  - jasper=4.2.8=h8ad263b_0
-  - jxrlib=1.1=hcfcfb64_3
-  - krb5=1.21.3=hdf4eb48_0
-  - lcms2=2.17=hbcf6048_0
-  - lerc=4.0.0=h6470a55_1
-  - libaec=1.1.4=h20038f6_0
-  - libamd=3.3.3=h60129d2_7100102
-  - libblas=3.9.0=35_h5709861_mkl
-  - libboost=1.86.0=h9dfe17d_4
-  - libbtf=2.3.2=h8c1c262_7100102
-  - libcamd=3.3.3=h8c1c262_7100102
-  - libcblas=3.9.0=35_h2a3cdd5_mkl
-  - libccolamd=3.3.4=h8c1c262_7100102
-  - libcholmod=5.3.1=hdf2ebef_7100102
-  - libclang13=21.1.0=default_ha2db4b5_1
-  - libcolamd=3.3.4=h8c1c262_7100102
-  - libcublas=12.9.1.4=he0c23c2_0
-  - libcurand=10.3.10.19=he0c23c2_0
-  - libcurl=8.14.1=h88aaa65_0
-  - libcusolver=11.7.5.82=hac47afa_1
-  - libcusparse=12.5.10.65=hac47afa_1
-  - libcxsparse=4.4.1=h8c1c262_7100102
-  - libdeflate=1.24=h76ddb4d_0
-  - libexpat=2.7.1=hac47afa_0
-  - libffi=3.4.6=h537db12_1
-  - libgcc=15.1.0=h1383e82_5
-  - libglib=2.84.3=h5f26cbf_1
-  - libgomp=15.1.0=h1383e82_5
-  - libhwloc=2.12.1=default_h88281d1_1000
-  - libiconv=1.18=hc1393d2_2
-  - libintl=0.22.5=h5728263_3
-  - libintl-devel=0.22.5=h5728263_3
-  - libjpeg-turbo=3.1.0=h2466b09_0
-  - libklu=2.3.5=h77a2eaa_7100102
-  - liblapack=3.9.0=35_hf9ab0e9_mkl
-  - libldl=3.3.2=h8c1c262_7100102
-  - liblzma=5.8.1=h2466b09_2
-  - libnvjitlink=12.9.86=he0c23c2_1
-  - libogg=1.3.5=h2466b09_1
-  - libparu=1.0.0=hd80212b_7100102
-  - libpng=1.6.50=h7351971_1
-  - libraw=0.21.4=h866491b_0
-  - librbio=4.3.4=h8c1c262_7100102
-  - libspex=3.2.3=h2f847cc_7100102
-  - libspqr=4.3.4=h60c7c62_7100102
-  - libsqlite=3.50.4=hf5d6505_0
-  - libssh2=1.11.1=h9aa295b_0
-  - libsuitesparseconfig=7.10.1=h0795de7_7100102
-  - libtiff=4.7.0=h550210a_6
-  - libumfpack=6.3.5=h4ca129d_7100102
-  - libvorbis=1.3.7=h5112557_2
-  - libwebp-base=1.6.0=h4d5522a_0
-  - libwinpthread=12.0.0.r4.gg4f2fc60ca=h57928b3_9
-  - libxml2=2.13.8=h741aa76_1
-  - libzlib=1.3.1=h2466b09_2
-  - llvm-openmp=20.1.8=hfa2b4ca_2
-  - lz4-c=1.10.0=h2466b09_1
-  - metis=5.1.0=h17e2fc9_1007
-  - mkl=2024.2.2=h57928b3_16
-  - mpfr=4.2.1=hbc20e70_3
-  - numpy=2.2.6=py310h4987827_0
-  - openexr=3.3.5=h4750f91_0
-  - openjpeg=2.5.3=h24db6dd_1
-  - openssl=3.5.2=h725018a_0
-  - packaging=25.0=pyh29332c3_1
-  - pcre2=10.46=h3402e2f_0
-  - pip=25.2=pyh8b19718_0
-  - pycolmap=3.12.3=cuda129py310hf385cc2_1
-  - python=3.10.18=h8c5b53a_0_cpython
-  - python_abi=3.10=8_cp310
-  - qt-main=5.15.15=hb098fff_5
-  - setuptools=80.9.0=pyhff2d567_0
-  - suitesparse=7.10.1=hfa24a04_7100102
-  - tbb=2021.13.0=h18a62a1_3
-  - tk=8.6.13=h2c6b04d_2
-  - tzdata=2025b=h78e105d_0
-  - ucrt=10.0.26100.0=h57928b3_0
-  - vc=14.3=h41ae7f8_31
-  - vc14_runtime=14.44.35208=h818238b_31
-  - vcomp14=14.44.35208=h818238b_31
-  - vs2015_runtime=14.44.35208=h38c0c73_31
-  - wheel=0.45.1=pyhd8ed1ab_1
-  - zstd=1.5.7=hbeecb71_2
+  # Core Python
+  - python=3.10
+  - pip
+  - setuptools
+  - wheel
+
+  # COLMAP / PyCOLMAP CPU builds only
+  - colmap=3.12.5=cpu_*
+  - pycolmap=3.12.3=cpu_*
+
+  # Scientific/runtime dependencies used by the pipeline
+  - numpy
+  - scipy=1.13.*
+  - tqdm
+  - pillow
+  - requests
+  - pyyaml
+  - psutil
+  - pywin32
+  - pywinauto
+  - pyinstaller
+
+  # GUI / image/video helpers
   - pip:
+      # Keep PyTorch CPU-only. The +cpu wheels are hosted on the PyTorch CPU wheel index.
+      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - torch==2.8.0+cpu
+      - torchvision==0.23.0+cpu
+
+      # App dependencies
       - certifi==2025.8.3
       - charset-normalizer==3.4.3
       - colorama==0.4.6
@@ -135,26 +64,14 @@ dependencies:
       - mpmath==1.3.0
       - networkx==3.4.2
       - opencv-python==4.12.0.88
-      - pillow==11.3.0
       - polars==1.33.0
       - proglog==0.1.12
-      - psutil==7.0.0
       - py-cpuinfo==9.0.0
       - pyparsing==3.2.3
       - python-dateutil==2.9.0.post0
       - python-dotenv==1.1.1
-      - pywin32==311
-      - pywinauto==0.6.9
-      - pyyaml==6.0.2
-      - requests==2.32.5
-      - scipy==1.13.1
-      - six==1.17.0
       - sympy==1.14.0
       - tkinterdnd2==0.4.3
-      - torch==2.8.0
-      - torchvision==0.23.0
-      - tqdm==4.67.1
-      - typing-extensions==4.15.0
       - ultralytics==8.3.193
       - ultralytics-thop==2.0.17
       - urllib3==2.5.0
