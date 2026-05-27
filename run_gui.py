@@ -1055,6 +1055,81 @@ def delete_pano_camera0(project_root: Path) -> None:
     else:
         ui_log("[WARN] delete_pano0.py reported an error.")
 
+def remove_pano_camera0_from_images_txt(project_root: Path, substring: str = "pano_camera0") -> bool:
+    """
+    Remove all image entries from output/sparse/0/images.txt whose image NAME
+    contains `substring`. COLMAP images.txt stores each image as two lines, so
+    this removes both the image header line and its POINTS2D line.
+
+    This is intentionally built into run_gui.py so the PyInstaller app does not
+    need a separate helper script for this post-processing step. No backup file
+    is created; the generated images.txt is filtered in place.
+    """
+    images_txt = project_root / "output" / "sparse" / "0" / "images.txt"
+
+    if not images_txt.exists():
+        ui_log(f"[WARN] images.txt not found; skipping {substring} removal: {images_txt}")
+        return False
+
+    try:
+        original_lines = images_txt.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    except Exception as e:
+        ui_log(f"[ERROR] Could not read images.txt for {substring} removal: {e}")
+        return False
+
+    out_lines = []
+    removed_count = 0
+    i = 0
+    needle = substring.lower()
+
+    while i < len(original_lines):
+        line = original_lines[i]
+        stripped = line.strip()
+
+        # Preserve comments and blank lines exactly as-is.
+        if not stripped or stripped.startswith("#"):
+            out_lines.append(line)
+            i += 1
+            continue
+
+        # COLMAP image entries are two lines: header + POINTS2D line.
+        header = line
+        points_line = original_lines[i + 1] if (i + 1) < len(original_lines) else ""
+        parts = header.strip().split()
+
+        remove_this_entry = False
+        image_id = "?"
+        image_name = ""
+
+        if len(parts) >= 10:
+            image_id = parts[0]
+            # NAME is everything after CAMERA_ID. This is safer than parts[9]
+            # in case a path ever contains spaces.
+            image_name = " ".join(parts[9:])
+            remove_this_entry = needle in image_name.lower()
+
+        if remove_this_entry:
+            removed_count += 1
+            ui_log(f"[IMAGES.TXT] Removing IMAGE_ID {image_id}, NAME '{image_name}'")
+            i += 2
+            continue
+
+        out_lines.append(header)
+        if (i + 1) < len(original_lines):
+            out_lines.append(points_line)
+            i += 2
+        else:
+            i += 1
+
+    try:
+        images_txt.write_text("".join(out_lines), encoding="utf-8")
+    except Exception as e:
+        ui_log(f"[ERROR] Could not write filtered images.txt: {e}")
+        return False
+
+    ui_log(f"[OK] Removed {removed_count} images.txt entr{'y' if removed_count == 1 else 'ies'} containing '{substring}'.")
+    return True
+
 def run_segment_images(project_root: Path) -> bool:
     seg = resource_path("segment_images.py")
     if not seg.exists():
@@ -1422,9 +1497,13 @@ def pipeline_thread(
         if stop_if_requested():
             return
 
-        # E) Delete pano_camera0 (your existing post-step)
+        # E) Delete pano_camera0 folders and remove pano_camera0 entries from images.txt
         ui_status("Deleting pano_camera0…")
         delete_pano_camera0(project_root)
+
+        ui_status("Removing pano_camera0 entries from images.txt…")
+        remove_pano_camera0_from_images_txt(project_root, substring="pano_camera0")
+
         ui_main_progress(90, indeterminate=False)
         if stop_if_requested():
             return
