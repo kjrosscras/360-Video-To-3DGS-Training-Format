@@ -1130,6 +1130,150 @@ def remove_pano_camera0_from_images_txt(project_root: Path, substring: str = "pa
     ui_log(f"[OK] Removed {removed_count} images.txt entr{'y' if removed_count == 1 else 'ies'} containing '{substring}'.")
     return True
 
+def _read_valid_image_ids_from_images_txt(images_txt: Path) -> set[int]:
+    """
+    Read IMAGE_ID values from a COLMAP text images.txt file.
+    Comments/blank lines are ignored. Each valid image entry has a header line
+    followed by a POINTS2D line.
+    """
+    valid_ids: set[int] = set()
+
+    if not images_txt.exists():
+        return valid_ids
+
+    try:
+        lines = images_txt.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return valid_ids
+
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+
+        parts = stripped.split()
+        if len(parts) >= 10:
+            try:
+                valid_ids.add(int(parts[0]))
+            except Exception:
+                pass
+
+        # COLMAP image entries are two lines: header + POINTS2D.
+        i += 2
+
+    return valid_ids
+
+
+def strip_invalid_points3d_track_refs(project_root: Path) -> bool:
+    """
+    Keep every 3D point row in output/sparse/0/points3D.txt, but remove any
+    TRACK[] pairs whose IMAGE_ID is no longer present in images.txt.
+
+    This is intentionally more permissive than strict COLMAP cleanup:
+      - It does NOT delete 3D points with 0 or 1 remaining track refs.
+      - It only strips invalid image references, which preserves front geometry
+        after pano_camera0 images are removed from images.txt.
+    """
+    sparse_dir = project_root / "output" / "sparse" / "0"
+    images_txt = sparse_dir / "images.txt"
+    points3d_txt = sparse_dir / "points3D.txt"
+
+    if not images_txt.exists():
+        ui_log(f"[WARN] images.txt not found; skipping points3D track cleanup: {images_txt}")
+        return False
+
+    if not points3d_txt.exists():
+        ui_log(f"[WARN] points3D.txt not found; skipping points3D track cleanup: {points3d_txt}")
+        return False
+
+    valid_image_ids = _read_valid_image_ids_from_images_txt(images_txt)
+    if not valid_image_ids:
+        ui_log("[WARN] No valid IMAGE_ID values found in images.txt; skipping points3D track cleanup.")
+        return False
+
+    try:
+        lines = points3d_txt.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    except Exception as e:
+        ui_log(f"[ERROR] Could not read points3D.txt for track cleanup: {e}")
+        return False
+
+    out_lines = []
+    total_points = 0
+    touched_points = 0
+    removed_track_refs = 0
+    points_with_zero_tracks = 0
+    points_with_one_track = 0
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Preserve comments/blank lines exactly as-is.
+        if not stripped or stripped.startswith("#"):
+            out_lines.append(line)
+            continue
+
+        parts = stripped.split()
+
+        # COLMAP points3D format:
+        # POINT3D_ID X Y Z R G B ERROR TRACK[] as IMAGE_ID POINT2D_IDX pairs
+        if len(parts) < 8:
+            out_lines.append(line)
+            continue
+
+        total_points += 1
+        fixed = parts[:8]
+        track_tokens = parts[8:]
+
+        kept_tracks = []
+        removed_here = 0
+
+        # Track tokens should come in pairs. If a malformed trailing token exists,
+        # drop it rather than writing an invalid partial pair.
+        for j in range(0, len(track_tokens) - 1, 2):
+            image_id_token = track_tokens[j]
+            point2d_idx_token = track_tokens[j + 1]
+
+            try:
+                image_id = int(image_id_token)
+            except Exception:
+                removed_here += 1
+                continue
+
+            if image_id in valid_image_ids:
+                kept_tracks.extend([image_id_token, point2d_idx_token])
+            else:
+                removed_here += 1
+
+        if removed_here:
+            touched_points += 1
+            removed_track_refs += removed_here
+
+        kept_pair_count = len(kept_tracks) // 2
+        if kept_pair_count == 0:
+            points_with_zero_tracks += 1
+        elif kept_pair_count == 1:
+            points_with_one_track += 1
+
+        out_lines.append(" ".join(fixed + kept_tracks) + "\n")
+
+    try:
+        points3d_txt.write_text("".join(out_lines), encoding="utf-8")
+    except Exception as e:
+        ui_log(f"[ERROR] Could not write cleaned points3D.txt: {e}")
+        return False
+
+    ui_log(
+        "[OK] Cleaned points3D.txt track refs: "
+        f"points={total_points}, touched={touched_points}, "
+        f"removed_invalid_refs={removed_track_refs}, "
+        f"zero_track_points_kept={points_with_zero_tracks}, "
+        f"one_track_points_kept={points_with_one_track}."
+    )
+    return True
+
+
 def run_segment_images(project_root: Path) -> bool:
     seg = resource_path("segment_images.py")
     if not seg.exists():
@@ -1503,6 +1647,9 @@ def pipeline_thread(
 
         ui_status("Removing pano_camera0 entries from images.txt…")
         remove_pano_camera0_from_images_txt(project_root, substring="pano_camera0")
+
+        ui_status("Removing deleted image references from points3D.txt…")
+        strip_invalid_points3d_track_refs(project_root)
 
         ui_main_progress(90, indeterminate=False)
         if stop_if_requested():
